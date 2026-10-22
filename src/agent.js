@@ -90,7 +90,28 @@ export async function reasonWithOpenAI(input, seen, config, fetcher = fetch) {
       })
     });
   } catch { throw new AgentError(502, 'OPENAI_NETWORK_OR_TIMEOUT'); }
-  if (!response.ok) throw new AgentError(502, 'OPENAI_REQUEST_FAILED');
+  if (!response.ok) {
+    let failure = {};
+    try { failure = await response.json(); } catch {}
+    const upstreamCode = failure?.error?.code;
+    const categories = {
+      insufficient_quota: 'OPENAI_INSUFFICIENT_QUOTA',
+      invalid_api_key: 'OPENAI_INVALID_API_KEY',
+      model_not_found: 'OPENAI_MODEL_NOT_FOUND',
+      unsupported_country_region_territory: 'OPENAI_REGION_UNSUPPORTED',
+      rate_limit_exceeded: 'OPENAI_RATE_LIMITED',
+      unsupported_parameter: 'OPENAI_UNSUPPORTED_PARAMETER',
+      unsupported_value: 'OPENAI_UNSUPPORTED_VALUE',
+      invalid_json_schema: 'OPENAI_INVALID_SCHEMA'
+    };
+    // Only log a fixed category and numeric status, never raw upstream content.
+    const status = Number.isInteger(response.status) ? response.status : 0;
+    const category = Object.hasOwn(categories, upstreamCode) ? categories[upstreamCode] :
+      ({ 400: 'OPENAI_BAD_REQUEST', 401: 'OPENAI_AUTH_FAILED', 403: 'OPENAI_ACCESS_DENIED',
+         404: 'OPENAI_MODEL_OR_RESOURCE_NOT_FOUND', 429: 'OPENAI_QUOTA_OR_RATE_LIMIT' }[status] || 'OPENAI_REQUEST_FAILED');
+    console.error(JSON.stringify({ event: 'openai_failed', upstreamStatus: status, category }));
+    throw new AgentError(502, category);
+  }
   let body;
   try { body = await response.json(); } catch { throw new AgentError(502, 'OPENAI_INVALID_RESPONSE'); }
   if (body.status !== 'completed') throw new AgentError(502, 'OPENAI_INCOMPLETE_RESPONSE');

@@ -63,3 +63,15 @@ test('OpenAI REST response parsing includes message output after reasoning items
   });
   assert.equal(result.decision, 'APPROVE');
 });
+test('upstream quota/auth/model errors expose only fixed diagnostic categories', async () => {
+  for (const [code, status, expected] of [
+    ['insufficient_quota', 429, 'OPENAI_INSUFFICIENT_QUOTA'],
+    ['invalid_api_key', 401, 'OPENAI_INVALID_API_KEY'],
+    ['model_not_found', 404, 'OPENAI_MODEL_NOT_FOUND'],
+    ['unknown-sensitive-upstream-text', 400, 'OPENAI_BAD_REQUEST']
+  ]) {
+    await assert.rejects(reasonWithOpenAI(input, false, config, async () => ({
+      ok: false, status, json: async () => ({ error: { code, message: 'secret-must-not-be-logged' } })
+    })), new RegExp(expected));
+  }
+});
