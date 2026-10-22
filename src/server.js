@@ -29,7 +29,7 @@ function send(res, code, value, signed = false) {
 }
 const server = createServer(async (req, res) => {
   if (req.method === 'GET' && ['/', '/healthz'].includes(req.url)) {
-    return send(res, 200, { service: 'ProofGuard', version: '0.2.0', status: 'running',
+    return send(res, 200, { service: 'ProofGuard', version: '0.2.1', status: 'running',
       mode: config.mode, hmacConfigured: Boolean(config.secret), provider: config.provider, model: config.model, modelKeyConfigured: Boolean(config.apiKey),
       competitionReady: false, proofIntegration: 'pending-official-artifacts',
       stateDurability: 'requires-persistent-disk' });

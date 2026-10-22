@@ -104,3 +104,24 @@ test('DeepSeek rejects missing key, empty/truncated/invalid outputs, and reports
   })), new RegExp('DEEPSEEK_' + code));
   await assert.rejects(reasonWithDeepSeek(input, false, config, async () => ({ ok: false, status: 402 })), /DEEPSEEK_INSUFFICIENT_BALANCE/);
 });
+
+test('DeepSeek receives exact ordered findings for large integers, hex case and multiple faults', async () => {
+  const { reasonWithDeepSeek } = await import('../src/agent.js');
+  const payment = { ...input, proof_vk: '0xAA', minimum: '9007199254740993',
+    public_balance: '9007199254740992', amount: '1001' };
+  await reasonWithDeepSeek(payment, true, config, async (_, options) => {
+    const payload = JSON.parse(JSON.parse(options.body).messages[1].content);
+    assert.deepEqual(payload.ordered_tool_checks, [
+      { reason_code: 'VK_SUBSTITUTION', failed: false },
+      { reason_code: 'THRESHOLD_MISMATCH', failed: true },
+      { reason_code: 'PROOF_REUSED', failed: true },
+      { reason_code: 'EXPIRED_CONDITION', failed: false },
+      { reason_code: 'RECIPIENT_MISMATCH', failed: false },
+      { reason_code: 'AMOUNT_OVERFLOW', failed: true }
+    ]);
+    assert.equal(payload.payment, undefined);
+    return { ok: true, json: async () => ({ choices: [{ finish_reason: 'stop', message: {
+      content: '{"decision":"REJECT","reason_code":"THRESHOLD_MISMATCH"}'
+    } }] }) };
+  });
+});
