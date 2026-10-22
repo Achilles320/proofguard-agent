@@ -2,16 +2,19 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { AgentError, Store, authenticate, signature, createHandler } from './agent.js';
 
+const provider = process.env.LLM_PROVIDER || 'deepseek';
 const config = {
+  provider,
   secret: process.env.AGENT_GAMES_HMAC_SECRET || '',
   secretEncoding: process.env.HMAC_SECRET_ENCODING || 'utf8',
   signatureEncoding: process.env.HMAC_SIGNATURE_ENCODING || 'hex',
-  apiKey: process.env.OPENAI_API_KEY || '', model: process.env.OPENAI_MODEL || 'gpt-6-luna',
+  apiKey: (provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY) || '',
+  model: provider === 'deepseek' ? (process.env.DEEPSEEK_MODEL || 'deepseek-flash') : (process.env.OPENAI_MODEL || 'gpt-6-luna'),
   mode: process.env.AGENT_MODE || 'preflight',
-  modelTimeout: Number(process.env.OPENAI_TIMEOUT_MS || 12000),
+  modelTimeout: Number(process.env.LLM_TIMEOUT_MS || process.env.OPENAI_TIMEOUT_MS || 12000),
   maxCalls: Number(process.env.MAX_MODEL_CALLS_PER_DAY || 100)
 };
-if (!['utf8', 'hex', 'base64'].includes(config.secretEncoding) ||
+if (!['deepseek', 'openai'].includes(provider) || !['utf8', 'hex', 'base64'].includes(config.secretEncoding) ||
     !['hex', 'base64'].includes(config.signatureEncoding) ||
     !['preflight', 'practice'].includes(config.mode) ||
     !Number.isInteger(config.modelTimeout) || config.modelTimeout < 100 || config.modelTimeout > 45000 ||
@@ -26,8 +29,8 @@ function send(res, code, value, signed = false) {
 }
 const server = createServer(async (req, res) => {
   if (req.method === 'GET' && ['/', '/healthz'].includes(req.url)) {
-    return send(res, 200, { service: 'ProofGuard', version: '0.1.0', status: 'running',
-      mode: config.mode, hmacConfigured: Boolean(config.secret), openaiConfigured: Boolean(config.apiKey),
+    return send(res, 200, { service: 'ProofGuard', version: '0.2.0', status: 'running',
+      mode: config.mode, hmacConfigured: Boolean(config.secret), provider: config.provider, model: config.model, modelKeyConfigured: Boolean(config.apiKey),
       competitionReady: false, proofIntegration: 'pending-official-artifacts',
       stateDurability: 'requires-persistent-disk' });
   }

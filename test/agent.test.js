@@ -75,3 +75,32 @@ test('upstream quota/auth/model errors expose only fixed diagnostic categories',
     })), new RegExp(expected));
   }
 });
+test('DeepSeek uses official endpoint, JSON output, disabled thinking and its own key', async () => {
+  const { reasonWithDeepSeek } = await import('../src/agent.js');
+  const result = await reasonWithDeepSeek(input, false, { ...config, model: 'deepseek-flash' }, async (url, options) => {
+    assert.equal(url, 'https://api.deepseek.com/chat/completions');
+    const request = JSON.parse(options.body);
+    assert.equal(request.model, 'deepseek-flash');
+    assert.deepEqual(request.thinking, { type: 'disabled' });
+    assert.deepEqual(request.response_format, { type: 'json_object' });
+    assert.equal(request.max_tokens, 512);
+    assert.equal(request.messages.length, 2);
+    assert.equal(request.text, undefined);
+    return { ok: true, json: async () => ({ choices: [{ finish_reason: 'stop', message: {
+      content: '{"decision":"APPROVE","reason_code":"VALID_CONDITION"}'
+    } }] }) };
+  });
+  assert.equal(result.decision, 'APPROVE');
+});
+test('DeepSeek rejects missing key, empty/truncated/invalid outputs, and reports balance errors', async () => {
+  const { reasonWithDeepSeek } = await import('../src/agent.js');
+  await assert.rejects(reasonWithDeepSeek(input, false, { ...config, apiKey: '' }), /DEEPSEEK_API_KEY_NOT_CONFIGURED/);
+  for (const [content, finish_reason, code] of [
+    ['', 'stop', 'EMPTY_RESPONSE'], ['{}', 'length', 'INCOMPLETE_RESPONSE'],
+    ['not-json', 'stop', 'INVALID_JSON'], ['{}', 'stop', 'INVALID_DECISION'],
+    ['{"decision":"APPROVE","reason_code":"PROOF_REUSED"}', 'stop', 'INVALID_DECISION']
+  ]) await assert.rejects(reasonWithDeepSeek(input, false, config, async () => ({ ok: true,
+    json: async () => ({ choices: [{ finish_reason, message: { content } }] })
+  })), new RegExp('DEEPSEEK_' + code));
+  await assert.rejects(reasonWithDeepSeek(input, false, config, async () => ({ ok: false, status: 402 })), /DEEPSEEK_INSUFFICIENT_BALANCE/);
+});

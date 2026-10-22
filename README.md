@@ -1,6 +1,6 @@
 # ProofGuard
 
-面向 zkVerify Agent Games / Proof Gatekeeper 的轻量 OpenAI Agent。
+面向 zkVerify Agent Games / Proof Gatekeeper 的轻量 AI Agent（默认 DeepSeek，可选 OpenAI）。
 
 **当前版本是基础服务与练习分类原型，不是可正式计分的完整参赛程序。**
 
@@ -8,7 +8,7 @@
 
 - Node.js 24，无第三方运行依赖；`GET /healthz` 和 `POST /agent`。
 - 原始请求体 HMAC 验签、响应签名、官方预检响应格式。
-- OpenAI Responses API + JSON Schema；精确整数规则复核，模型与规则不一致时停止处理。
+- DeepSeek Chat Completions + JSON Output，或 OpenAI Responses API + JSON Schema；精确整数规则复核，模型与规则不一致时停止处理。
 - 请求时限、任务幂等、单实例串行处理、证明重复使用练习记录。
 - 每 UTC 日模型调用次数上限，状态文件原子写入；失败不记录成功任务。
 - 默认 `AGENT_MODE=preflight`，**始终拒绝 competition 任务**，防止未完成证明时误参赛。
@@ -19,7 +19,7 @@
 2. zkVerify 的真实链上证明验证、网络选择、费用与最终确认等待。
 3. 官方 HMAC 算法、secret 编码、digest 编码。当前实现假设 SHA-256 + UTF-8 secret + hex digest，可配置编码；必须用官方预检验证兼容性。
 4. 官方练习中的过期等号边界、多重错误优先级、证明缺失的响应规范。
-5. 真实 OpenAI 调用与模型账户可用性（当前仅做了模拟 API 测试）。
+5. 真实 DeepSeek 调用与账户余额（没有密钥时只进行模拟 API 测试）。
 
 **程序不会伪造证明，不会把 task.proof_tx 当作链上验证成功。**练习模式中的 APPROVE 只表示输入字段检查通过，不具备密码学验证结论。
 
@@ -52,7 +52,7 @@ npm run check
 - Node 版本：通过 `NODE_VERSION=24` 固定。
 - 第一次上线保持 `AGENT_MODE=preflight`，可以不设置真实密钥；此时任务接口返回未配置，健康接口正常。
 
-在 Render 的 Environment 中填写 `OPENAI_API_KEY` 和平台生成的 `AGENT_GAMES_HMAC_SECRET`。不要发到聊天、写进仓库或日志。
+在 Render 的 Environment 中填写 `DEEPSEEK_API_KEY` 和平台生成的 `AGENT_GAMES_HMAC_SECRET`。不要发到聊天、写进仓库或日志。
 
 免费服务仅适合初次检查，休眠可能导致错失任务。正式比赛需要常驻服务与持久存储；本版本不具备正式比赛资格，先不要为比赛升级付费资源。
 
@@ -74,3 +74,25 @@ npm run check
 - https://agentgames.zkverify.io/events/proof-gatekeeper
 
 无网页控制台、无数据库服务、无定时轮询。比赛任务由主办方向 HTTPS endpoint 推送。
+
+## DeepSeek 切换（v0.2.0）
+
+在 Render Environment 设置：
+
+| 变量 | 值 |
+| --- | --- |
+| LLM_PROVIDER | deepseek |
+| DEEPSEEK_MODEL | deepseek-flash |
+| DEEPSEEK_API_KEY | 自己在 DeepSeek 官方平台生成的密钥 |
+| LLM_TIMEOUT_MS | 12000 |
+
+模型调用地址固定为官方 https://api.deepseek.com/chat/completions，使用 JSON Output，并显式关闭 thinking 以降低延迟。程序会校验输出字段、完整性与规则一致性。密钥缺失时返回明确错误，不会使用 OpenAI 密钥访问 DeepSeek，也不会自动切回 OpenAI。
+
+健康检查返回 provider、model、modelKeyConfigured，不显示密钥。旧的 OPENAI_API_KEY 可留存但在 DeepSeek 模式不使用，也可以自行删除。比赛 HMAC 密钥继续保留。
+
+DeepSeek 返回 401 表示认证失败、402 表示余额不足、429 表示限流；练习页面可能统一显示 502，具体类别可在 Render 日志查看。
+
+官方参考：
+- https://api-docs.deepseek.com/
+- https://api-docs.deepseek.com/guides/json_mode/
+- https://api-docs.deepseek.com/guides/thinking_mode/
